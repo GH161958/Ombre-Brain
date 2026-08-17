@@ -35,7 +35,7 @@ import logging
 import asyncio
 import time
 from contextlib import asynccontextmanager
-from typing import Optional, Awaitable
+from typing import Any, Optional, Awaitable
 import httpx
 
 
@@ -44,6 +44,56 @@ import httpx
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mcp.server.fastmcp import FastMCP
+
+
+# ChatGPT Apps reads ``securitySchemes`` from the tool descriptor, while older
+# clients read the compatibility mirror in ``_meta``.  FastMCP 1.29 exposes
+# documented per-tool ``meta`` but has no first-class ``securitySchemes``
+# argument; its public MCP Tool model explicitly permits extension fields.
+_MCP_OAUTH_SECURITY_SCHEMES = [{"type": "oauth2", "scopes": ["mcp"]}]
+
+
+def _oauth_tool_meta(meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return tool metadata with the ChatGPT OAuth compatibility mirror."""
+
+    merged = dict(meta or {})
+    # Always use the server's one OAuth contract; a caller must not be able to
+    # accidentally advertise weaker per-tool credentials.
+    merged["securitySchemes"] = [
+        dict(scheme) for scheme in _MCP_OAUTH_SECURITY_SCHEMES
+    ]
+    return merged
+
+
+class OAuthToolMetadataFastMCP(FastMCP):
+    """FastMCP 1.29 adapter that advertises OAuth on every registered tool.
+
+    ``add_tool(..., meta=...)`` is the supported FastMCP registration API.  The
+    SDK serializes that metadata as ``_meta``.  Its public ``mcp.types.Tool``
+    model allows extension fields, so ``list_tools`` additionally emits the
+    top-level field required by current ChatGPT Apps descriptors.
+    """
+
+    def add_tool(
+        self,
+        fn: Any,
+        *args: Any,
+        meta: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().add_tool(fn, *args, meta=_oauth_tool_meta(meta), **kwargs)
+
+    async def list_tools(self) -> list[Any]:
+        tools = await super().list_tools()
+        return [
+            type(tool)(
+                **tool.model_dump(by_alias=True),
+                securitySchemes=[
+                    dict(scheme) for scheme in _MCP_OAUTH_SECURITY_SCHEMES
+                ],
+            )
+            for tool in tools
+        ]
 
 from bucket_manager import BucketManager
 from deletion_requests import DeletionRequestStore
@@ -349,7 +399,7 @@ async def _stdio_lifespan(_server):
         await lifecycle.stop()
 
 
-mcp = FastMCP(
+mcp = OAuthToolMetadataFastMCP(
     "Ombre Brain",
     host=_BIND_HOST,
     port=OMBRE_PORT,

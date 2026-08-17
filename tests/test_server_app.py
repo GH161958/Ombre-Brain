@@ -197,6 +197,14 @@ async def test_kelivo_compatible_stateless_json_handshake_lists_all_tools():
     assert server.mcp.settings.stateless_http is True
     registered = await server.mcp.list_tools()
     assert [tool.name for tool in registered] == list(EXPECTED_PUBLIC_MCP_TOOLS)
+    for tool in registered:
+        descriptor = tool.model_dump(by_alias=True)
+        assert descriptor["securitySchemes"] == [
+            {"type": "oauth2", "scopes": ["mcp"]}
+        ]
+        assert descriptor["_meta"]["securitySchemes"] == [
+            {"type": "oauth2", "scopes": ["mcp"]}
+        ]
 
     app = build_http_app(
         server.mcp,
@@ -294,6 +302,13 @@ async def test_kelivo_compatible_stateless_json_handshake_lists_all_tools():
                     EXPECTED_PUBLIC_MCP_TOOLS
                 )
                 assert all(isinstance(tool.get("inputSchema"), dict) for tool in tools)
+                assert all(
+                    tool.get("securitySchemes")
+                    == [{"type": "oauth2", "scopes": ["mcp"]}]
+                    and tool.get("_meta", {}).get("securitySchemes")
+                    == [{"type": "oauth2", "scopes": ["mcp"]}]
+                    for tool in tools
+                )
 
 
 def test_legacy_sse_transport_is_rejected():
@@ -766,6 +781,10 @@ async def test_auth_middleware_rejects_missing_token_with_canonical_metadata_url
     assert payload["resource_metadata"] == (
         "https://ombre.example/.well-known/oauth-protected-resource/mcp"
     )
+    challenge = dict(messages[0]["headers"])[b"www-authenticate"].decode()
+    assert 'scope="mcp"' in challenge
+    assert 'error="invalid_token"' in challenge
+    assert 'error_description="OAuth access token is required"' in challenge
 
 
 @pytest.mark.asyncio

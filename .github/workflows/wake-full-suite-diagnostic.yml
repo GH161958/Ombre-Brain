@@ -91,7 +91,7 @@ jobs:
           git add src/tools/breath/surface.py
           python deploy/gen_update_manifest.py
           git add update_manifest.json
-          git diff --cached --check
+          git -c core.whitespace=cr-at-eol diff --cached --check
 
       - name: Commit repaired bytes to feature branch
         run: |

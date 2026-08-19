@@ -53,7 +53,7 @@ jobs:
         run: |
           rm .github/workflows/wake-config-doc-patch.yml
           git add config.example.yaml .github/workflows/wake-config-doc-patch.yml
-          git diff --cached --check --ignore-space-at-eol
+          git -c core.whitespace=cr-at-eol diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs: document wake surfacing config"

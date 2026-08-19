@@ -1,15 +1,15 @@
 name: Wake full-suite diagnostic
 
 on:
-  push:
-    branches:
-      - feat/continuity-first-wake-surface
+  pull_request:
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   full-suite-diagnostic:
+    if: github.head_ref == 'feat/continuity-first-wake-surface'
     runs-on: ubuntu-latest
     env:
       UV_VERSION: '0.11.23'
@@ -43,21 +43,6 @@ jobs:
             --cov-report=xml \
             --cov-fail-under=60 \
             2>&1 | tee pytest-full.log
-
-      - name: Commit failure log back to feature branch
-        if: failure()
-        run: |
-          mkdir -p .wake-ci-diagnostics
-          cp pytest-full.log .wake-ci-diagnostics/full-suite.log
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .wake-ci-diagnostics/full-suite.log
-          if git diff --cached --quiet; then
-            echo "No diagnostic log change to commit."
-            exit 0
-          fi
-          git commit -m "ci: capture wake full-suite failure [skip ci]"
-          git push origin HEAD:feat/continuity-first-wake-surface
 
       - name: Upload full-suite diagnostic output
         if: always()

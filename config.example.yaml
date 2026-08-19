@@ -164,6 +164,13 @@ surfacing:
   breath_max_results: 20          # 1-50, hard cap of buckets returned per breath
   breath_max_tokens: 10000        # 500-40000, total token cap per breath; 40000 is a safety ceiling, not the default
   feel_max_tokens: 6000           # 500-20000, full-text budget for feel history; older feels collapse to one-line summaries
+  # Wake policy applies only to spontaneous no-query breath(); explicit breath_search() is unaffected.
+  # Wake policy: continuity first, then ordinary, then pure work. Set enabled=false for legacy order.
+  wake:
+    enabled: true
+    pure_work_max: 1
+    continuity_labels: [relationship, identity, continuity, voice]
+    work_labels: [work]
   # iter 1.8: weighted sampling for breath surfacing mode（无参数浮现）
   # 加权采样：从 top_k 候选里按 score**(1/temperature) 抽 sample_k 个，让"想起"带轻微随机性。
   # 测试 fixture 里默认关 (enabled=false)，保证排序确定。生产可以开。

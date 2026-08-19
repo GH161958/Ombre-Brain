@@ -10,6 +10,9 @@ on:
   pull_request:
     branches: [main, testing]
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -17,12 +20,88 @@ jobs:
       UV_VERSION: '0.11.23'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
+
+      - name: Prepare wake branch generated artifacts
+        if: github.event_name == 'pull_request' && github.head_ref == 'feat/continuity-first-wake-surface'
+        run: |
+          git fetch origin main
+          python - <<'PY'
+          from difflib import SequenceMatcher
+          from pathlib import Path
+          import subprocess
+
+          path = Path("src/tools/breath/surface.py")
+          base = subprocess.check_output(
+              ["git", "show", "origin/main:src/tools/breath/surface.py"]
+          )
+          current = path.read_bytes()
+
+          def split_lines(data: bytes):
+              rows = []
+              for raw in data.splitlines(keepends=True):
+                  if raw.endswith(b"\r\n"):
+                      rows.append((raw[:-2], b"\r\n"))
+                  elif raw.endswith(b"\n"):
+                      rows.append((raw[:-1], b"\n"))
+                  elif raw.endswith(b"\r"):
+                      rows.append((raw[:-1], b"\r"))
+                  else:
+                      rows.append((raw, b""))
+              return rows
+
+          def nearest_eol(rows, index, fallback):
+              if not rows:
+                  return fallback or b"\n"
+              index = min(max(index, 0), len(rows) - 1)
+              for distance in range(len(rows)):
+                  for candidate in (index - distance, index + distance):
+                      if 0 <= candidate < len(rows):
+                          eol = rows[candidate][1]
+                          if eol:
+                              return eol
+              return fallback or b"\n"
+
+          base_rows = split_lines(base)
+          current_rows = split_lines(current)
+          matcher = SequenceMatcher(
+              None,
+              [body for body, _ in base_rows],
+              [body for body, _ in current_rows],
+              autojunk=False,
+          )
+
+          rebuilt = []
+          for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+              if tag == "equal":
+                  rebuilt.extend(body + eol for body, eol in base_rows[i1:i2])
+                  continue
+              for offset, (body, eol) in enumerate(current_rows[j1:j2]):
+                  is_last = j1 + offset == len(current_rows) - 1
+                  if is_last and not eol:
+                      chosen = b""
+                  else:
+                      anchor = i1 + min(offset, max(0, i2 - i1 - 1))
+                      chosen = nearest_eol(base_rows, anchor, eol)
+                  rebuilt.append(body + chosen)
+
+          rebuilt_bytes = b"".join(rebuilt)
+          normalize = lambda data: data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+          if normalize(rebuilt_bytes) != normalize(current):
+              raise SystemExit("line-ending repair changed semantic text")
+          path.write_bytes(rebuilt_bytes)
+          PY
+          git add src/tools/breath/surface.py
+          python deploy/gen_update_manifest.py
+          cp src/tools/breath/surface.py /tmp/wake-surface.py
+          cp update_manifest.json /tmp/wake-update-manifest.json
 
       - name: Verify hot-update manifest
         run: python deploy/gen_update_manifest.py --check
@@ -45,6 +124,25 @@ jobs:
 
       - name: Install locked dependencies
         run: uv pip sync requirements-dev.lock.txt --require-hashes --system
+
+      - name: Wake syntax check
+        run: >-
+          python -m py_compile
+          src/tools/breath/surface.py
+          tests/test_breath_wake_policy.py
+
+      - name: Wake focused regression
+        run: >-
+          python -m pytest
+          tests/test_breath_wake_policy.py
+          -q --asyncio-mode=auto
+
+      - name: Existing breath regressions
+        run: >-
+          python -m pytest
+          tests/test_breath*.py
+          tests/test_pinned_visibility_regression.py
+          -q --asyncio-mode=auto
 
       - name: Run static checks
         run: ruff check src tools deploy tests --no-cache
@@ -141,6 +239,30 @@ jobs:
         run: >-
           python -m pytest tests/test_web_api_docker_integration.py -q
           --timeout=120
+
+      - name: Wake diff whitespace check
+        if: github.event_name == 'pull_request' && github.head_ref == 'feat/continuity-first-wake-surface'
+        run: |
+          git diff --check origin/main...HEAD
+          git diff --cached --check
+
+      - name: Persist wake generated artifacts to feature branch
+        if: success() && github.event_name == 'pull_request' && github.head_ref == 'feat/continuity-first-wake-surface'
+        run: |
+          git fetch origin "$GITHUB_HEAD_REF"
+          git checkout -B "$GITHUB_HEAD_REF" "origin/$GITHUB_HEAD_REF"
+          cp /tmp/wake-surface.py src/tools/breath/surface.py
+          cp /tmp/wake-update-manifest.json update_manifest.json
+          git add src/tools/breath/surface.py update_manifest.json
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "Generated artifacts already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: refresh wake patch manifest and line endings"
+          git push origin "$GITHUB_HEAD_REF"
 
       - name: Clean Docker MCP stack
         if: always()

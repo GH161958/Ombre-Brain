@@ -1,0 +1,50 @@
+name: Wake full-suite diagnostic
+
+on:
+  push:
+    branches:
+      - feat/continuity-first-wake-surface
+
+jobs:
+  full-suite-diagnostic:
+    runs-on: ubuntu-latest
+    env:
+      UV_VERSION: '0.11.23'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Refresh hot-update manifest in workspace
+        run: python deploy/gen_update_manifest.py
+
+      - name: Install lockfile tool
+        run: python -m pip install "uv==$UV_VERSION"
+
+      - name: Install locked test dependencies
+        run: uv pip sync requirements-dev.lock.txt --require-hashes --system
+
+      - name: Run full local suite with captured output
+        run: |
+          set -o pipefail
+          python -m pytest tests -q \
+            --asyncio-mode=auto \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=60 \
+            2>&1 | tee pytest-full.log
+
+      - name: Upload full-suite diagnostic output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wake-full-suite-diagnostic
+          path: |
+            pytest-full.log
+            coverage.xml
+          if-no-files-found: warn

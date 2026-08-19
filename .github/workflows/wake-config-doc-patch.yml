@@ -1,19 +1,20 @@
 name: Wake config doc patch
 
 on:
-  push:
-    branches: [docs/wake-config-example]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: github.head_ref == 'docs/wake-config-example'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: docs/wake-config-example
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Insert wake config example without rewriting existing line endings
@@ -56,4 +57,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs: document wake surfacing config"
-          git push origin HEAD:docs/wake-config-example
+          git push origin HEAD:${GITHUB_HEAD_REF}

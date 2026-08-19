@@ -5,6 +5,9 @@ on:
     branches:
       - feat/continuity-first-wake-surface
 
+permissions:
+  contents: write
+
 jobs:
   full-suite-diagnostic:
     runs-on: ubuntu-latest
@@ -12,6 +15,8 @@ jobs:
       UV_VERSION: '0.11.23'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -28,7 +33,7 @@ jobs:
       - name: Install locked test dependencies
         run: uv pip sync requirements-dev.lock.txt --require-hashes --system
 
-      - name: Run full local suite with captured output
+      - name: Run canonical full local suite with captured output
         run: |
           set -o pipefail
           python -m pytest tests -q \
@@ -38,6 +43,21 @@ jobs:
             --cov-report=xml \
             --cov-fail-under=60 \
             2>&1 | tee pytest-full.log
+
+      - name: Commit failure log back to feature branch
+        if: failure()
+        run: |
+          mkdir -p .wake-ci-diagnostics
+          cp pytest-full.log .wake-ci-diagnostics/full-suite.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .wake-ci-diagnostics/full-suite.log
+          if git diff --cached --quiet; then
+            echo "No diagnostic log change to commit."
+            exit 0
+          fi
+          git commit -m "ci: capture wake full-suite failure [skip ci]"
+          git push origin HEAD:feat/continuity-first-wake-surface
 
       - name: Upload full-suite diagnostic output
         if: always()

@@ -14,6 +14,7 @@ tools/breath/surface.py — 无 query 浮现模式
 - 未解决桶按 calculate_score 排序；冷启动桶（从未访问且 importance>=8）插队前 2
 - 配置开关 surfacing.sampling.enabled 启用后做加权无放回采样，否则
   保留 top1 + top20 内随机洗牌
+- sampling/shuffle 后按 surfacing.wake 做 continuity-first 稳定分区并限制纯 work
 - 末尾 1~2 条「久未浮现」passive association（imp>=8 且未访问 / imp>=9 且 7 天未活跃）
 
 不做什么（边界）：
@@ -51,6 +52,14 @@ _PIN_BUDGET_NOTICE = (
     "token 预算不足：核心准则 required≈{required} tokens（完整渲染核心准则总计），"
     "limit={limit} tokens，omitted={omitted} 条；普通浮现已跳过（ordinary surfacing skipped）。"
 )
+_DEFAULT_WAKE_CONTINUITY_LABELS = (
+    "relationship",
+    "identity",
+    "continuity",
+    "voice",
+)
+_DEFAULT_WAKE_WORK_LABELS = ("work",)
+_DEFAULT_WAKE_PURE_WORK_MAX = 1
 
 
 def _bucket_has_tags(meta: dict, tag_filter: list) -> bool:
@@ -62,6 +71,110 @@ def _bucket_has_tags(meta: dict, tag_filter: list) -> bool:
 
 def _can_surface(bucket: dict) -> bool:
     return _SURFACE_POLICY.evaluate_bucket(bucket, mode="spontaneous").allowed
+
+
+def _normalize_wake_labels(value) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        values = value.split(",")
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        values = value
+    else:
+        values = [value]
+    return {
+        str(item).strip().lower()
+        for item in values
+        if str(item).strip()
+    }
+
+
+def _wake_policy_config(surfacing_cfg: dict) -> dict:
+    raw = surfacing_cfg.get("wake", {}) or {}
+    enabled = parse_bool(raw.get("enabled", True), default=True)
+    try:
+        pure_work_max = max(
+            0,
+            int(raw.get("pure_work_max", _DEFAULT_WAKE_PURE_WORK_MAX)),
+        )
+    except (TypeError, ValueError):
+        pure_work_max = _DEFAULT_WAKE_PURE_WORK_MAX
+
+    continuity_source = raw.get(
+        "continuity_labels",
+        _DEFAULT_WAKE_CONTINUITY_LABELS,
+    )
+    work_source = raw.get("work_labels", _DEFAULT_WAKE_WORK_LABELS)
+    return {
+        "enabled": enabled,
+        "pure_work_max": pure_work_max,
+        "continuity_labels": _normalize_wake_labels(continuity_source),
+        "work_labels": _normalize_wake_labels(work_source),
+    }
+
+
+def _wake_bucket_class(bucket: dict, wake_cfg: dict) -> str:
+    meta = bucket.get("metadata", {}) or {}
+    labels = (
+        _normalize_wake_labels(meta.get("domain"))
+        | _normalize_wake_labels(meta.get("tags"))
+    )
+    if labels & wake_cfg["continuity_labels"]:
+        return "continuity"
+    if labels & wake_cfg["work_labels"]:
+        return "pure_work"
+    return "ordinary"
+
+
+def _stable_wake_partition(candidates: list[dict], wake_cfg: dict) -> list[dict]:
+    if not wake_cfg["enabled"]:
+        return list(candidates)
+
+    continuity = []
+    ordinary = []
+    pure_work = []
+    for bucket in candidates:
+        bucket_class = _wake_bucket_class(bucket, wake_cfg)
+        if bucket_class == "continuity":
+            continuity.append(bucket)
+        elif bucket_class == "pure_work":
+            pure_work.append(bucket)
+        else:
+            ordinary.append(bucket)
+    return continuity + ordinary + pure_work
+
+
+def _select_wake_candidates(
+    candidates: list[dict],
+    max_results: int,
+    wake_cfg: dict,
+) -> list[dict]:
+    if not wake_cfg["enabled"]:
+        return list(candidates[:max_results])
+
+    selected = []
+    pure_work_used = 0
+    for bucket in _stable_wake_partition(candidates, wake_cfg):
+        if _wake_bucket_class(bucket, wake_cfg) == "pure_work":
+            if pure_work_used >= wake_cfg["pure_work_max"]:
+                continue
+            pure_work_used += 1
+        selected.append(bucket)
+        if len(selected) >= max_results:
+            break
+    return selected
+
+
+def _wake_extra_allowed(
+    bucket: dict,
+    wake_cfg: dict,
+    pure_work_used: int,
+) -> bool:
+    if not wake_cfg["enabled"]:
+        return True
+    if _wake_bucket_class(bucket, wake_cfg) != "pure_work":
+        return True
+    return pure_work_used < wake_cfg["pure_work_max"]
 
 
 def _budget_notice(*, omitted: int, used: int, limit: int) -> str:
@@ -91,6 +204,7 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
         return "记忆系统暂时无法访问。"
 
     surfacing_cfg = rt.config.get("surfacing", {}) or {}
+    wake_cfg = _wake_policy_config(surfacing_cfg)
     try:
         footprint_snapshot = rt.bucket_mgr.footprint_snapshot()
     except Exception as exc:
@@ -164,7 +278,6 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
         f"{len(pinned_buckets)} pinned, {len(unresolved)} unresolved"
     )
 
-
     def _sort_key(b: dict):
         """F-05: 二级排序 key，消除同分时浮现随机抖动。
         主键：decay_score（降序）
@@ -205,7 +318,7 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
     scored_deduped = [b for b in scored if b["id"] not in cold_start_ids]
     scored_with_cold = cold_start + scored_deduped
 
-    # --- 按 token 预算浮现，加权采样 / 随机洗牌 + 硬上限 ---
+    # --- 按 token 预算浮现，加权采样 / 随机洗牌 + wake policy + 硬上限 ---
     candidates = list(scored_with_cold)
     sampling_cfg = surfacing_cfg.get("sampling", {}) or {}
     sampling_enabled = parse_bool(sampling_cfg.get("enabled", False), default=False)
@@ -255,7 +368,13 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
             random.shuffle(pool)
             non_cold = top1 + pool + non_cold[min(20, len(non_cold)):]
         candidates = cold_start + non_cold
-    candidates = candidates[:max_results]
+
+    candidates = _select_wake_candidates(
+        candidates,
+        max_results=max_results,
+        wake_cfg=wake_cfg,
+    )
+    pure_work_used = 0
 
     dynamic_results = []
     dynamic_omitted = 0
@@ -273,6 +392,11 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
                     continue
                 dynamic_results.append(rendered)
                 token_budget -= entry_tokens
+                if (
+                    wake_cfg["enabled"]
+                    and _wake_bucket_class(b, wake_cfg) == "pure_work"
+                ):
+                    pure_work_used += 1
             except Exception as e:
                 rt.logger.warning(f"Failed to render surfaced bucket / 浮现渲染失败: {e}")
                 continue
@@ -334,6 +458,8 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
         if passive_pool and not pinned_omitted and not dynamic_omitted:
             random.shuffle(passive_pool)
             for b in passive_pool[:2]:
+                if not _wake_extra_allowed(b, wake_cfg, pure_work_used):
+                    continue
                 try:
                     rendered, entry_tokens = render_stored_bucket(
                         b,
@@ -344,6 +470,11 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
                         continue
                     passive_results.append(rendered)
                     token_budget -= entry_tokens
+                    if (
+                        wake_cfg["enabled"]
+                        and _wake_bucket_class(b, wake_cfg) == "pure_work"
+                    ):
+                        pure_work_used += 1
                 except Exception as e:
                     rt.logger.warning(f"passive association render failed: {e}")
     except Exception as e:
@@ -371,6 +502,8 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
             if resolved_pool:
                 random.shuffle(resolved_pool)
                 for b in resolved_pool[:3]:
+                    if not _wake_extra_allowed(b, wake_cfg, pure_work_used):
+                        continue
                     try:
                         rendered, entry_tokens = render_stored_bucket(
                             b,
@@ -381,6 +514,11 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
                             continue
                         dream_results.append(rendered)
                         token_budget -= entry_tokens
+                        if (
+                            wake_cfg["enabled"]
+                            and _wake_bucket_class(b, wake_cfg) == "pure_work"
+                        ):
+                            pure_work_used += 1
                         rt.logger.info(f"Dream surface triggered / 偶遇机制触发: {b['id']}")
                     except Exception as e:
                         rt.logger.warning(f"Dream surface render failed / 偶遇渲染失败: {e}")

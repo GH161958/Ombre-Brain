@@ -8,8 +8,8 @@ DecayEngine / EmbeddingEngine / ImportEngine，把它们注入 tools._runtime �
 web._shared，然后以 @mcp.tool() 注册薄封装（真正的实现在 src/tools/<工具>/ 下面）。
 
 关键行为：
-- 启动后暴露 23 个 MCP 工具：breath/breath_search/breath_advanced/hold/grow/source_read/
-  source_attach/source_detach/source_restore/relation_read/relation_attach/relation_detach/relation_restore/
+- 启动后暴露 24 个 MCP 工具：breath/breath_search/breath_advanced/hold/grow/source_read/
+  source_attach/source_detach/source_restore/canonical_link/relation_read/relation_attach/relation_detach/relation_restore/
   trace/anchor/release/pulse/plan/letter_write/
   letter_lock_update/letter_read/dream/I；每个入口
   ≤ 10 行，只负责转发。breath 拆成 breath()(0 参数)+breath_search(3 参数)+
@@ -25,7 +25,7 @@ web._shared，然后以 @mcp.tool() 注册薄封装（真正的实现在 src/too
 - 不写 HTTP 路由处理（全在 web/* 下）；不写 LLM prompt（dehydrator 负责）
 - 不直接读写桶文件（bucket_manager 负责）
 
-对外暴露：mcp 单实例 + 23 个 @mcp.tool() 函数；HTTP 路由在 src/web/*
+对外暴露：mcp 单实例 + 24 个 @mcp.tool() 函数；HTTP 路由在 src/web/*
 ========================================
 """
 
@@ -67,6 +67,7 @@ from tools import hold as _t_hold
 from tools import grow as _t_grow
 from tools import source_read as _t_source_read
 from tools import source_bindings as _t_source_bindings
+from tools import canonical_link as _t_canonical_link
 from tools import relation_read as _t_relation_read
 from tools import relation_bindings as _t_relation_bindings
 from tools import trace as _t_trace
@@ -854,6 +855,54 @@ async def source_detach(bucket_id: str, expected_title: str, source_slot: int) -
 async def source_restore(bucket_id: str, expected_title: str, source_slot: int) -> str:
     """恢复一个 detached Source slot 的原绑定；只恢复证据引用，不恢复 archived 桶。桶生命周期恢复请用 trace(..., restore=True)。"""
     return await _with_notice(_t_source_bindings.restore(bucket_id, expected_title, source_slot), op="source_restore", args={"bucket_id": bucket_id, "source_slot": source_slot})
+
+
+@mcp.tool()
+async def canonical_link(
+    action: str,
+    bucket_id: Optional[str] = "",
+    expected_title: Optional[str] = "",
+    canonical_path: Optional[str] = "",
+    source_slots: Optional[list[int]] = None,
+    expected_evidence_sha256: Optional[str] = "",
+    version: Optional[str] = "",
+    blob_sha: Optional[str] = "",
+    commit_sha: Optional[str] = "",
+    history_path: Optional[str] = "",
+    note: Optional[str] = "",
+    limit: Optional[int] = 20,
+) -> str:
+    """Memory↔Vault canonical link：propose 生成带 evidence fingerprint 的候选；confirm 只在真实 Vault update 成功后写回 receipt；read/lookup 双向追溯。它不调用 Vault，也不能绕过 fresh SHA / EE approval。"""
+    return await _with_notice(
+        _t_canonical_link.dispatch(
+            action=action,
+            bucket_id=bucket_id,
+            expected_title=expected_title,
+            canonical_path=canonical_path,
+            source_slots=source_slots,
+            expected_evidence_sha256=expected_evidence_sha256,
+            version=version,
+            blob_sha=blob_sha,
+            commit_sha=commit_sha,
+            history_path=history_path,
+            note=note,
+            limit=limit,
+        ),
+        op="canonical_link",
+        args={
+            "action": action,
+            "bucket_id": bucket_id,
+            "canonical_path_len": len(canonical_path or ""),
+            "source_slots_count": len(source_slots or []),
+            "has_evidence_sha": bool(expected_evidence_sha256),
+            "version_len": len(version or ""),
+            "has_blob_sha": bool(blob_sha),
+            "has_commit_sha": bool(commit_sha),
+            "history_path_len": len(history_path or ""),
+            "note_len": len(note or ""),
+            "limit": limit,
+        },
+    )
 
 
 @mcp.tool()

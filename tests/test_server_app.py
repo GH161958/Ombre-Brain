@@ -35,6 +35,7 @@ EXPECTED_PUBLIC_MCP_TOOLS = (
     "source_attach",
     "source_detach",
     "source_restore",
+    "canonical_link",
     "relation_read",
     "relation_attach",
     "relation_detach",

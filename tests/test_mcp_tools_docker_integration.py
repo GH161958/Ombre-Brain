@@ -34,6 +34,7 @@ EXPECTED_TOOLS = {
     "source_attach",
     "source_detach",
     "source_restore",
+    "canonical_link",
     "relation_read",
     "relation_attach",
     "relation_detach",
@@ -59,6 +60,7 @@ EXPECTED_TOOL_ORDER = (
     "source_attach",
     "source_detach",
     "source_restore",
+    "canonical_link",
     "relation_read",
     "relation_attach",
     "relation_detach",
@@ -114,6 +116,20 @@ EXPECTED_TOOL_PROPERTIES = {
     "source_attach": {"bucket_id", "expected_title", "source_content", "source_ranges"},
     "source_detach": {"bucket_id", "expected_title", "source_slot"},
     "source_restore": {"bucket_id", "expected_title", "source_slot"},
+    "canonical_link": {
+        "action",
+        "bucket_id",
+        "expected_title",
+        "canonical_path",
+        "source_slots",
+        "expected_evidence_sha256",
+        "version",
+        "blob_sha",
+        "commit_sha",
+        "history_path",
+        "note",
+        "limit",
+    },
     "relation_read": {"bucket_id", "expected_title", "include_titles", "include_detached"},
     "relation_attach": {"bucket_id", "target_bucket_id", "relation_type", "expected_title", "label", "reverse_label"},
     "relation_detach": {"bucket_id", "relation_slot", "expected_title"},
@@ -170,6 +186,7 @@ EXPECTED_REQUIRED_PROPERTIES = {
     "source_attach": {"bucket_id", "expected_title", "source_content"},
     "source_detach": {"bucket_id", "expected_title", "source_slot"},
     "source_restore": {"bucket_id", "expected_title", "source_slot"},
+    "canonical_link": {"action"},
     "relation_read": {"bucket_id"},
     "relation_attach": {"bucket_id", "target_bucket_id", "relation_type"},
     "relation_detach": {"bucket_id", "relation_slot"},
@@ -362,7 +379,7 @@ def test_concurrent_clients_discover_the_same_stateless_dream_schema():
     assert set(schemas[0]["properties"]) == {"window_hours"}
 
 
-def test_manifest_exposes_exactly_the_documented_23_tools(mcp_client):
+def test_manifest_exposes_exactly_the_documented_24_tools(mcp_client):
     tools = mcp_client.list_tools()
     assert [tool["name"] for tool in tools] == list(EXPECTED_TOOL_ORDER)
     tools_by_name = {tool["name"]: tool for tool in tools}

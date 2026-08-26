@@ -2601,7 +2601,9 @@ class BucketManager:
                   # i_dream_dates  被 dream 见证过的日期列表（按天去重），升级门槛的唯一依据
                   # i_promoted_to  候选升级后指向的正式 I 桶 ID
                   # i_from_candidate 正式 I 桶指回它的候选桶 ID
-                  "i_stage", "i_dream_dates", "i_promoted_to", "i_from_candidate"):
+                  "i_stage", "i_dream_dates", "i_promoted_to", "i_from_candidate",
+                  # Memory ↔ Vault durable canonical receipt ledger.
+                  "canonical_links"):
             if k in kwargs:
                 if k == "weight" and kwargs[k] is not None:
                     post[k] = _clamp01(kwargs[k], _DEFAULT_VALENCE)

@@ -42,8 +42,8 @@
     },
     {
       "path": "src/bucket_manager.py",
-      "sha256": "e9f819ff2caa38de42c2d50c1c2affb960ddbe9b23ae1a90d8a8afc9b147d68e",
-      "size": 188175
+      "sha256": "812f9b2ce4fae6272c32b90b32fc7c46052a8f7cf04105d78f956445ebb73ee0",
+      "size": 188283
     },
     {
       "path": "src/decay_engine.py",
@@ -757,8 +757,8 @@
     },
     {
       "path": "src/server.py",
-      "sha256": "a72bc1a2f7b4cab5ec57f6890c276199ed59d16ebd0fd69f9522d3a207083bf8",
-      "size": 68852
+      "sha256": "c3a6add377b6cd296098289a6b9e4964b73156d5cbdb6ba6c1fcc41d1a3e7911",
+      "size": 70779
     },
     {
       "path": "src/server_app.py",
@@ -824,6 +824,16 @@
       "path": "src/tools/breath/surface.py",
       "sha256": "67a3d72aaeeb3a0be012a7df62b725338d4ad21d4cbbc7b9dbbbb7d2aefd3565",
       "size": 22760
+    },
+    {
+      "path": "src/tools/canonical_link/__init__.py",
+      "sha256": "7fefdabc5512fac02bbcde5eee3581f33fd351ebb3917967c0813ba7137a9cdd",
+      "size": 96
+    },
+    {
+      "path": "src/tools/canonical_link/core.py",
+      "sha256": "f9aa9f9808344800078ed95db59cfb2c19792dfd981e5866504bd3d1acae76b9",
+      "size": 12475
     },
     {
       "path": "src/tools/dream/__init__.py",

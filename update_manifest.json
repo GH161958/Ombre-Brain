@@ -636,6 +636,11 @@
       "size": 1266
     },
     {
+      "path": "src/ombrebrain/protocol/memory_resource.py",
+      "sha256": "b0275c0bb69e7a653afc00d177fe6e504790d11c5f1912817c3228b28e187176",
+      "size": 5251
+    },
+    {
       "path": "src/ombrebrain/protocol/public_tools.py",
       "sha256": "1c984bd7dea426851e0827030ea725fcbaabb02d4aa20a60bc3c3e6bd1b24158",
       "size": 8925
@@ -757,8 +762,8 @@
     },
     {
       "path": "src/server.py",
-      "sha256": "c3a6add377b6cd296098289a6b9e4964b73156d5cbdb6ba6c1fcc41d1a3e7911",
-      "size": 70779
+      "sha256": "995136441c1a59cd84439680c9eeac0d96b0eeae4367b520db224c8b311d50d2",
+      "size": 71107
     },
     {
       "path": "src/server_app.py",

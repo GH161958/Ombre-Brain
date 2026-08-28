@@ -53,6 +53,7 @@ from embedding_engine import EmbeddingEngine
 from ombrebrain.storage.embedding_outbox import EmbeddingOutbox
 from ombrebrain.storage.source_store import SourceStore
 from ombrebrain.security.deployment_profile import enforce_mcp_network_guard
+from ombrebrain.protocol.memory_resource import read_memory_resource
 from import_memory import ImportEngine
 from migrate_engine import MigrateEngine
 from utils import get_version, load_config, setup_logging
@@ -358,6 +359,11 @@ mcp = FastMCP(
     stateless_http=True,
     lifespan=_stdio_lifespan if config.get("transport", "stdio") == "stdio" else None,
 )
+
+@mcp.resource("ombre://memory/{bucket_id}", mime_type="application/json")
+async def memory_resource(bucket_id: str) -> str:
+    """Read one exact active Memory bucket without mutating it."""
+    return await read_memory_resource(bucket_mgr, bucket_id)
 
 
 # =============================================================

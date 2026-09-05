@@ -1418,6 +1418,8 @@ class BucketManager:
         source_tool: str = "",
         grow_batch_id: str = "",
         bucket_id_override: str = "",
+        write_operation: Optional[dict[str, str]] = None,
+        require_exact_bucket_id: bool = False,
         allow_embedding_fallback: bool = False,
         meaning: str = "",
         media: Any = None,
@@ -1477,6 +1479,10 @@ class BucketManager:
             if bucket_id_override
             else generate_bucket_id()
         )
+        if require_exact_bucket_id and (
+            not bucket_id_override or preferred_bucket_id != bucket_id_override
+        ):
+            raise ValueError("exact bucket ID is invalid")
         bucket_id = preferred_bucket_id
         # 桶名 = "YYYY-MM-DD HH-MM-SS [LLM生成的标题]"，无标题时仅用时间戳。
         # 使用连字符替代冒号，避免 sanitize_name 后续编辑时把冒号去掉破坏可读性。
@@ -1565,6 +1571,22 @@ class BucketManager:
         metadata["source_tool"] = declared_source or "direct"
         if grow_batch_id:
             metadata["grow_batch_id"] = str(grow_batch_id).strip()[:_GROW_BATCH_ID_MAX]
+        if write_operation:
+            key_hash = str(write_operation.get("key_sha256") or "").strip().lower()
+            request_hash = str(
+                write_operation.get("request_sha256") or ""
+            ).strip().lower()
+            if (
+                len(key_hash) != 64
+                or len(request_hash) != 64
+                or any(char not in "0123456789abcdef" for char in key_hash + request_hash)
+            ):
+                raise ValueError("invalid write operation provenance")
+            metadata["write_operation"] = {
+                "schema": "ombre-write-operation/v0",
+                "key_sha256": key_hash,
+                "request_sha256": request_hash,
+            }
 
         # --- iter 1.8: 让记忆带「为什么记得」 / why this is worth remembering ---
         # 自由文本字段。模型 / 人类手写。不参与评分，只参与展示与搜索。
@@ -1641,6 +1663,8 @@ class BucketManager:
 
         def _candidate_ids():
             yield preferred_bucket_id
+            if require_exact_bucket_id:
+                return
             if bucket_id_override:
                 yield f"{preferred_bucket_id}_{datetime.now().strftime('%S')}"
                 for _attempt in range(5):
@@ -1652,6 +1676,7 @@ class BucketManager:
         # while holding the same turn used by update/migrate/delete.  The
         # second existence check closes the former create-vs-migrate TOCTOU.
         collision_count = 0
+        created = False
         for candidate_id in _candidate_ids():
             async with self._bucket_turn(candidate_id):
                 if self._find_bucket_file(candidate_id):
@@ -1705,7 +1730,11 @@ class BucketManager:
                         e,
                     )
                     raise
+                created = True
                 break
+
+        if not created:
+            raise FileExistsError(f"bucket ID already exists: {preferred_bucket_id}")
 
         # 不在 bucket lease 内等待全局 outbox 文件事务。async context 退出后到
         # 这里没有任何 await，因而先持久登记派生期望状态，再允许取消点出现。

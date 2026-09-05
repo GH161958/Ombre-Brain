@@ -22,12 +22,14 @@ grow 是「我把一段长内容整理进记忆」。短内容（<30 字）走 s
 import re
 from typing import Optional
 
+from errors import PublicToolError
 from ombrebrain.storage.source_store import normalize_source_ranges
 
 from .. import _runtime as rt
 from .._common import check_grow_input_size, check_grow_items_payload
 from .shortpath import grow_shortpath
 from .core import grow_core, grow_items
+from .durable_operation import execute_durable_item
 from .retry_guard import request_fingerprint, run_once
 
 
@@ -132,9 +134,29 @@ def _shifted_source_ranges_error(items: list, source_content: str) -> str:
 
 
 async def dispatch(
-    content: str = "", items: Optional[list] = None, test_data: bool = False
+    content: str = "", items: Optional[list] = None, test_data: bool = False,
+    operation_key: str = "",
 ) -> str:
     await rt.decay_engine.ensure_started()
+
+    # An operation key is reserved for one already-reviewed, pre-formed item.
+    # It intentionally bypasses native splitting and semantic merge so one
+    # caller identity always maps to at most one exact Memory identity.
+    if operation_key:
+        if content and content.strip():
+            raise PublicToolError(
+                "幂等单条写入不接受共享原文 content，未创建任何桶。"
+            )
+        if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
+            raise PublicToolError(
+                "operation_key 仅支持一个预先整理好的 items 对象，未创建任何桶。"
+            )
+        err = check_grow_items_payload(items)
+        if err:
+            raise PublicToolError(err)
+        return await execute_durable_item(
+            items[0], operation_key, test_data=bool(test_data)
+        )
 
     # 预拆分模式：上层 AI 已拆好 N 条最终正文 → 逐字入库，跳过 digest 的二次改写。
     # 传了 items（非空列表）即走此路；不传则行为与旧版完全一致（向后兼容）。

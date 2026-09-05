@@ -42,8 +42,8 @@
     },
     {
       "path": "src/bucket_manager.py",
-      "sha256": "812f9b2ce4fae6272c32b90b32fc7c46052a8f7cf04105d78f956445ebb73ee0",
-      "size": 188283
+      "sha256": "4cd1b3a5da6bb59f0dc2477244d6873412291379137369fdb787f7f74f0727cb",
+      "size": 189509
     },
     {
       "path": "src/decay_engine.py",
@@ -762,8 +762,8 @@
     },
     {
       "path": "src/server.py",
-      "sha256": "995136441c1a59cd84439680c9eeac0d96b0eeae4367b520db224c8b311d50d2",
-      "size": 71107
+      "sha256": "11a8ae61a0f2f4f018837869caa75e7b00c69dc143e544439120e36fbded7d82",
+      "size": 71393
     },
     {
       "path": "src/server_app.py",
@@ -862,13 +862,18 @@
     },
     {
       "path": "src/tools/grow/__init__.py",
-      "sha256": "e1fb2d1a4c06507e195e99a0732320a697efee6349557ed45764b6bec22ecf5b",
-      "size": 5910
+      "sha256": "696d39f2044bb54c3fe317c25c2ddb8e4bce5e7bd4e49f0ec7b3b04d21ff75f0",
+      "size": 6916
     },
     {
       "path": "src/tools/grow/core.py",
       "sha256": "dfb3111bdfd155eed1d7e7255f2eefea9b502d391900ff36e0087080837c7e36",
       "size": 14531
+    },
+    {
+      "path": "src/tools/grow/durable_operation.py",
+      "sha256": "eea5fc0ec0096e9b6635a8953a0c66f488d11ad145d49cfb5f8a22d10277101c",
+      "size": 10582
     },
     {
       "path": "src/tools/grow/retry_guard.py",

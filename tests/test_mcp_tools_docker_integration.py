@@ -111,7 +111,7 @@ EXPECTED_TOOL_PROPERTIES = {
         "source_content",
         "source_ranges",
     },
-    "grow": {"content", "items", "test_data"},
+    "grow": {"content", "items", "test_data", "operation_key"},
     "source_read": {"bucket_id", "expected_title", "scope", "cursor", "max_tokens", "source_slots", "all_sources"},
     "source_attach": {"bucket_id", "expected_title", "source_content", "source_ranges"},
     "source_detach": {"bucket_id", "expected_title", "source_slot"},

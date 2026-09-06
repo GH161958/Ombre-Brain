@@ -248,7 +248,9 @@ class MCPAuthMiddleware:
                     )
                     challenge = (
                         'Bearer realm="Ombre Brain",'
-                        f' resource_metadata="{metadata_url}", scope="mcp"'
+                        f' resource_metadata="{metadata_url}", scope="mcp",'
+                        ' error="invalid_token",'
+                        ' error_description="OAuth access token is required"'
                     )
                     body = json.dumps(
                         {
